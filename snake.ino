@@ -2,6 +2,15 @@
 
 #include "./vec2.h"
 
+// have to put this up here due to a bug in the build process
+// see https://arduino.stackexchange.com/questions/66530/class-enum-was-not-declared-in-this-scope
+enum GameState {
+	PLAY,
+	OVER,
+	NAME,
+};
+GameState gameState = PLAY;
+
 // ## Hardware stuff ##
 
 #define DATA_PIN 23
@@ -35,6 +44,8 @@ void calibrateJoystick() {
 	Serial.print("Calibrated Center VRy: ");
 	Serial.println(centerVRy);
 }
+
+const int button1Pin = 12;
 
 // input functions
 
@@ -70,7 +81,8 @@ vec2 readInputDir() {
 	return vec2(xDelta, yDelta);
 }
 bool readInputButton() {
-	return digitalRead(joystickSW) == LOW;
+	//return digitalRead(joystickSW) == LOW;
+	return digitalRead(button1Pin) == LOW;
 }
 
 
@@ -78,19 +90,13 @@ bool readInputButton() {
 
 vec2 pos; // head position, x = column, y = bounds.x-row
 vec2 dir = vec2(0, -1); // head direction
-int length = 3;
+int length; // set in the reset function
 const int MAX_LENGTH = 32;
 vec2 tail[MAX_LENGTH]; // tail segments
 
 vec2 fruit; // fruit position
 
 int score = 0;
-
-enum GameState {
-	PLAY,
-	OVER
-};
-GameState gameState = PLAY;
 
 const vec2 bounds = vec2(32, 8); // game board/display bounds
 
@@ -146,8 +152,14 @@ void drawSnake(bool negative = false) {
 
 // game loop functions
 
+int stateTicks = 0;
+void setGameState(GameState state) {
+	gameState = state;
+	stateTicks = 0;
+}
 void gameOver() {
-	gameState = OVER;
+	Serial.print("GAME OVER");
+	setGameState(OVER);
 	fillDisplay();
 	drawSnake(true);
 }
@@ -159,11 +171,13 @@ void gameUpdate() {
 	if (!input.isZero() && (input != (dir*-1)))
 		dir = input;
 
+	/*
 	Serial.print("dir: "); printVec(dir);
 	Serial.print(" | pos: "); printVec(pos);
 	Serial.print(" | length: "); Serial.print(length);
 	Serial.print(" | button: "); Serial.print(readInputButton());
 	Serial.println();
+	*/
 
 	moveBy(dir);
 
@@ -184,11 +198,56 @@ void gameUpdate() {
 	plotPoint(fruit);
 }
 void deadUpdate() {
+	Serial.print(stateTicks);
+	if(stateTicks > 20)
+		setGameState(NAME);
 	/*
 	for(int x = 0; x < bounds.x; x++)
 		for(int y = 0; y < bounds.y; y++)
 			plotPoint(vec2(x,y), (x+y)%2);
 	*/
+}
+
+int nameCharIndex;
+char nameChars[4];
+void nameUpdate() {
+	vec2 inDir = readInputDir();
+	char nameChar = nameChars[nameCharIndex];
+	nameChar += inDir.y; // decrement if <0, increment if >0, no change if =0
+	// [ is directly after Z in ASCII, it's our stand-in for a blank character
+	if(nameChar < 'A') nameChar = '[';
+	if(nameChar > '[') nameChar = 'A';
+	nameChars[nameCharIndex] = nameChar;
+
+	Serial.println(nameChars);
+
+	if(readInputButton()) nameCharIndex++;
+	if(nameCharIndex >= 4) {
+		// TODO submit score
+		Serial.print("NAME: ");
+		Serial.print(nameChars);
+		Serial.print(" SCORE: ");
+		Serial.println(score);
+		gameReset();
+	}
+}
+
+void gameReset() {
+	// seed rng
+	randomSeed(analogRead(joystickVRx));
+
+	// reset name entry settings
+	nameCharIndex = 0;
+	for(int i = 0; i < 4; i++) nameChars[i] = 'A';
+	// initialise score & length
+	score = 0;
+	length = 3;
+
+	pos = bounds / 2; // initialise head position
+	for(int i = 0; i < length; i++) // initialise tail
+		tail[i] = pos;
+	repositionFruit(); // initialise fruit position
+	setGameState(PLAY);
 }
 
 void setup() {
@@ -199,22 +258,20 @@ void setup() {
 	pinMode(joystickSW, INPUT_PULLUP);  // Enable internal pull-up resistor
 	pinMode(joystickVRx, INPUT);
 	pinMode(joystickVRy, INPUT);
+	pinMode(button1Pin, INPUT_PULLUP);
 
 	calibrateJoystick();
 
-	// seed rng
-	randomSeed(analogRead(joystickVRx));
-
-	pos = bounds / 2; // initialise head position
-	for(int i = 0; i < length; i++) // initialise tail
-		tail[i] = pos;
-	repositionFruit(); // initialise fruit position
+	gameReset();
+	setGameState(OVER); //  TODO remove, debug
 }
 
 void loop() {
 	switch(gameState) {
 		case PLAY: gameUpdate(); break;
 		case OVER: deadUpdate(); break;
+		case NAME: nameUpdate(); break;
 	}
+	stateTicks++;
 	delay(150);
 }
