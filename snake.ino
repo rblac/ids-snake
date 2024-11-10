@@ -7,7 +7,7 @@
 enum GameState {
 	PLAY,
 	OVER,
-	NAME,
+	NAME
 };
 GameState gameState = PLAY;
 
@@ -150,12 +150,42 @@ void drawSnake(bool negative = false) {
 	plotPoint(pos, !negative);
 }
 
+void displayChar(char c, unsigned int screenIndex, bool invert = false) {
+	if(c == '[') c = ' '; // replace placeholder with blank space
+	screenIndex = 3 - screenIndex; // column indices go right to left
+
+	uint8_t bitmap[8]; // allocate buffer for character bitmap
+	uint8_t col_width = display.getChar(c, 8, bitmap); // get bitmap from library built-in font
+
+	// disable automatic refresh to prevent flickering
+	display.control(screenIndex, screenIndex, MD_MAX72XX::UPDATE, MD_MAX72XX::OFF);
+
+	// 255 means all 8 bits are set
+	// please read up on bitmaps if you're confused
+	for(int col = 0; col < 8; col++) // wipe columns
+		display.setColumn((7-col) + 8*screenIndex, invert ? 255 : 0);
+	// draw character column-by-column
+	for(int col = 0; col < col_width; col++) {
+		uint8_t column_data = bitmap[col];
+		if(invert) column_data = column_data xor 255;
+		display.setColumn((col_width-col) + 8*screenIndex, column_data);
+	}
+
+	// re-enable refresh
+	display.control(screenIndex, screenIndex, MD_MAX72XX::UPDATE, MD_MAX72XX::ON);
+}
+void displayString(const char* s, unsigned int length = 4, unsigned int offset = 0, bool invert = false) {
+	for(int i = 0; i < length; i++)
+		displayChar(s[(i+offset) % length], i, invert);
+}
+
 // game loop functions
 
-int stateTicks = 0;
+unsigned int stateTicks = 0;
 void setGameState(GameState state) {
 	gameState = state;
 	stateTicks = 0;
+	display.clear();
 }
 void gameOver() {
 	Serial.print("GAME OVER");
@@ -198,17 +228,28 @@ void gameUpdate() {
 	plotPoint(fruit);
 }
 void deadUpdate() {
-	Serial.print(stateTicks);
-	if(stateTicks > 20)
+	// after 20 ticks, display score
+	if(stateTicks > 20) {
+		if(score > 9999) // won't fit on screen
+			displayString("WHOA");
+		else {
+			int decimatedScore = score;
+			// print each digit
+			for(int digit = 0; digit < 4; digit++) {
+				if(decimatedScore)
+				// ASCII numbers are sequential, all we need to do is add the right offset
+				displayChar(decimatedScore % 10 + '0', 3-digit);
+				decimatedScore /= 10;
+			}
+		}
+	}
+
+	// after 40 ticks, go to name entry
+	if(stateTicks > 40)
 		setGameState(NAME);
-	/*
-	for(int x = 0; x < bounds.x; x++)
-		for(int y = 0; y < bounds.y; y++)
-			plotPoint(vec2(x,y), (x+y)%2);
-	*/
 }
 
-int nameCharIndex;
+unsigned int nameCharIndex;
 char nameChars[4];
 void nameUpdate() {
 	vec2 inDir = readInputDir();
@@ -219,7 +260,11 @@ void nameUpdate() {
 	if(nameChar > '[') nameChar = 'A';
 	nameChars[nameCharIndex] = nameChar;
 
-	Serial.println(nameChars);
+	// display characters
+	// invert every few ticks to create a blinking animation
+	bool invertChar = (stateTicks / 5) % 2;
+	for(int i = 0; i < 4; i++)
+		displayChar(nameChars[i], i, i==nameCharIndex ? invertChar : false);
 
 	if(readInputButton()) nameCharIndex++;
 	if(nameCharIndex >= 4) {
@@ -263,7 +308,6 @@ void setup() {
 	calibrateJoystick();
 
 	gameReset();
-	setGameState(OVER); //  TODO remove, debug
 }
 
 void loop() {
