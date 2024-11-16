@@ -85,6 +85,48 @@ bool readInputButton() {
 	return digitalRead(button1Pin) == LOW;
 }
 
+// ## Scoreboard stuff ##
+const int MAX_ENTRIES = 20;
+int populatedEntries = 0;
+char entryNames[MAX_ENTRIES*4];
+int entryScores[MAX_ENTRIES];
+
+void submitEntry(char* entryName, int entryScore) {
+	if(populatedEntries < MAX_ENTRIES)
+		populatedEntries++;
+
+	int entryIndex = populatedEntries;
+	for(int i = 0; i < populatedEntries; i++)
+		if(entryScores[i] < entryScore) {
+			entryIndex = i;
+			break;
+		}
+
+	if(entryIndex >= MAX_ENTRIES) return;
+
+	// shift all score entries below the new score
+	for(int i = populatedEntries-1; i > entryIndex; i--) {
+		strncpy(&entryNames[i*4], &entryNames[(i-1)*4], 4);
+		entryScores[i] = entryScores[i-1];
+	}
+
+	strncpy(&entryNames[entryIndex*4], entryName, 4);
+	entryScores[entryIndex] = entryScore;
+}
+void debugPrintScoreboard() {
+	Serial.println("| NAME | SCORE |");
+	Serial.println("| ------------ |");
+	for(int i = 0; i < populatedEntries; i++) {
+		Serial.print("| ");
+		Serial.print(entryNames[i*4]);
+		Serial.print(entryNames[i*4+1]);
+		Serial.print(entryNames[i*4+2]);
+		Serial.print(entryNames[i*4+3]);
+		Serial.print(" | ");
+		Serial.print(entryScores[i]);
+		Serial.println(" |");
+	}
+}
 
 // ## Game stuff ##
 
@@ -268,11 +310,12 @@ void nameUpdate() {
 
 	if(readInputButton()) nameCharIndex++;
 	if(nameCharIndex >= 4) {
-		// TODO submit score
+		submitEntry(nameChars, score);
 		Serial.print("NAME: ");
 		Serial.print(nameChars);
 		Serial.print(" SCORE: ");
 		Serial.println(score);
+		debugPrintScoreboard();
 		gameReset();
 	}
 }
