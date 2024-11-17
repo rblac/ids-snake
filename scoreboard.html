@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>snake game scoreboard</title>
+<style>
+body {
+	background: #222;
+	color: white;
+
+	font-size: 200%;
+	font-family: monospace;
+}
+table {
+	border: 1px solid white;
+}
+th {
+	/*border-bottom: 1px solid white;*/
+	background: white;
+	color: #222;
+}
+th, td {
+	padding: 0.3em;
+}
+td {
+	text-align: right;
+}
+</style>
+	</head>
+	<body>
+		<center>
+			<h1>snake scoreboard!</h1>
+			<marquee> ====== </marquee>
+			<table id=board>
+				<thead>
+					<tr> <th>name</th><th>score</th> </tr>
+				</thead>
+				<tbody id=board-body>
+					<tr> <td>--  </td><td>0</td> </tr>
+				</tbody>
+			</table>
+		</center>
+		<script>
+			const board = document.getElementById("board");
+			const bb = document.getElementById("board-body");
+
+			async function fetchScores() {
+				const resp = await fetch("/data.json");
+				if(!resp.ok) {
+					console.error(resp);
+					return;
+				}
+
+				const json = await resp.json();
+
+				// clear of all children
+				bb.innerHTML = "";
+
+				for(let e of json.entries) {
+					const row = document.createElement("tr");
+					const nameCell = document.createElement("td");
+					const scoreCell = document.createElement("td");
+					nameCell.innerText = e[0].replaceAll("[", " ");
+					scoreCell.innerText = e[1];
+					row.appendChild(nameCell);
+					row.appendChild(scoreCell);
+					bb.appendChild(row);
+				}
+			}
+			setInterval(fetchScores, 1000);
+		</script>
+	</body>
+</html>

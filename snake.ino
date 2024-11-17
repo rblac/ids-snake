@@ -1,4 +1,6 @@
 #include <MD_MAX72xx.h>
+#include <WiFi.h>
+#include <WebServer.h>
 
 #include "./vec2.h"
 
@@ -86,6 +88,7 @@ bool readInputButton() {
 }
 
 // ## Scoreboard stuff ##
+
 const int MAX_ENTRIES = 20;
 int populatedEntries = 0;
 char entryNames[MAX_ENTRIES*4];
@@ -113,6 +116,20 @@ void submitEntry(char* entryName, int entryScore) {
 	strncpy(&entryNames[entryIndex*4], entryName, 4);
 	entryScores[entryIndex] = entryScore;
 }
+void prefillScoreboard() {
+	submitEntry("RB[[", 32);
+	submitEntry("ONE[", 1);
+	submitEntry("DOS[", 2);
+	submitEntry("SAN[", 3);
+	submitEntry("TUTU", 4);
+	submitEntry("PIEC", 5);
+	submitEntry("SEIS", 6);
+	submitEntry("NANA", 7);
+	submitEntry("OTTE", 8);
+	submitEntry("KYUU", 9);
+	submitEntry("TEN[", 10);
+}
+
 void debugPrintScoreboard() {
 	Serial.println("| NAME | SCORE |");
 	Serial.println("| ------------ |");
@@ -125,6 +142,81 @@ void debugPrintScoreboard() {
 		Serial.print(" | ");
 		Serial.print(entryScores[i]);
 		Serial.println(" |");
+	}
+}
+
+String scoreboardJson() {
+	String out = "{ \"entries\": [ ";
+
+	for(int i = 0; i < populatedEntries; i++) {
+		out += "[\"";
+		out += entryNames[i*4];
+		out += entryNames[i*4+1];
+		out += entryNames[i*4+2];
+		out += entryNames[i*4+3];
+		out += "\", ";
+		out += entryScores[i];
+		out += " ]";
+		if(i != populatedEntries - 1) out += ',';
+	}
+
+	out += " ] }";
+	return out;
+}
+
+// ## Server stuff ##
+
+// reference https://docs.espressif.com/projects/arduino-esp32/en/latest/api/wifi.html
+
+const char* SSID = "snake scoreboard server";
+WiFiServer server(80);
+#include "./scoreboard.h" // the webpage. header generated with xxd -i
+
+void initServer() {
+	if(!WiFi.softAP(SSID)) {
+		Serial.println("Failed to initialise access point.");
+		return;
+	}
+
+	IPAddress ip = WiFi.softAPIP();
+	Serial.print("AP IP: ");
+	Serial.println(ip);
+
+	server.begin();
+	Serial.print("Server started");
+}
+void serverUpdate() {
+	while(true) {
+		NetworkClient client = server.accept();
+		if(!client) break;
+		if(!client.connected()) continue;
+
+		String clientRequest = "";
+		while(client.available())
+			clientRequest += (char)client.read();
+
+		if(clientRequest.startsWith("GET / ")) {
+			client.println("HTTP/1.1 200 ok");
+			client.println("Content-type:text/html");
+			client.println();
+			for(char c : scoreboard_html)
+				client.print(c);
+			client.println();
+		} else if(clientRequest.startsWith("GET /data.json")) {
+			client.println("HTTP/1.1 200 ok");
+			client.println("Content-type:application/json");
+			client.println();
+			client.println(scoreboardJson());
+		} else {
+			client.println("HTTP/1.1 404 not found");
+			client.println("Content-type:text/html");
+			client.println();
+			client.print("received request:");
+			client.print(clientRequest);
+			client.println();
+		}
+
+		client.stop(); // close connection
 	}
 }
 
@@ -350,6 +442,9 @@ void setup() {
 
 	calibrateJoystick();
 
+	prefillScoreboard();
+	initServer();
+
 	gameReset();
 }
 
@@ -360,5 +455,7 @@ void loop() {
 		case NAME: nameUpdate(); break;
 	}
 	stateTicks++;
+
+	serverUpdate();
 	delay(150);
 }
