@@ -1,0 +1,41 @@
+@startuml
+!theme plain
+'skinparam linetype polyline
+
+state "init" as Setup
+state "reset game variables" as Reset
+state "update leaderboard" as UpdateLB
+
+Setup: set up hardware
+Setup: initialise WiFi AP
+
+Reset: reset score to 0
+Reset: reset tail length to default
+Reset: reset snake position
+Reset: reposition food
+
+UpdateLB: determine ranking for current score
+UpdateLB: shift all entries below rank
+UpdateLB: store name and score
+
+[*] -down-> Setup
+Setup -down-> Reset
+PLAY : accept input
+PLAY : move snake
+PLAY : if food is consumed:\n  increment length and score\n  reposition food
+
+PLAY --> PLAY : snake doesn't collide with self
+
+PLAY -down-> OVER : snake collides with self
+
+OVER: invert screen
+OVER: display score
+
+OVER -left-> NAME : after delay
+
+NAME: accept input
+NAME: display entered name
+NAME -up-> UpdateLB : name entry finished
+UpdateLB -> Reset
+Reset -> PLAY
+@enduml
